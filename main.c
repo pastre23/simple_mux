@@ -1,3 +1,5 @@
+#define VIDEO_FPS 30
+
 #include <libavformat/avformat.h>
 
 int main(int argc, char *argv[]) {
@@ -51,23 +53,35 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "Error occurred when opening output file\n");
         return -1;
     }
-    
-    while (1) {
-        AVStream *in_stream, *out_stream;
 
+    AVStream *in_stream, *out_stream;
+    
+    // Assumi un framerate di 30 fps per semplificare, quindi la durata di un frame è 1/30 di secondo
+    int64_t frame_duration = 90000/VIDEO_FPS;
+    int64_t next_pts = 0;
+
+    while (1) 
+    {
         ret = av_read_frame(in_format_ctx, &pkt);
         if (ret < 0)
             break;
 
-        in_stream  = in_format_ctx->streams[pkt.stream_index];
-        if (pkt.stream_index >= stream_mapping_size ||
-            stream_mapping[pkt.stream_index] < 0) {
+        in_stream = in_format_ctx->streams[pkt.stream_index];
+        if (pkt.stream_index >= stream_mapping_size || stream_mapping[pkt.stream_index] < 0) {
             av_packet_unref(&pkt);
             continue;
         }
 
         pkt.stream_index = stream_mapping[pkt.stream_index];
         out_stream = out_format_ctx->streams[pkt.stream_index];
+
+        // Imposta i timestamp
+        pkt.pts = next_pts;
+        pkt.dts = next_pts;
+        next_pts += frame_duration; // Incrementa il PTS per il prossimo frame
+
+        // Riscalare i timestamp se necessario
+        av_packet_rescale_ts(&pkt, in_stream->time_base, out_stream->time_base);
 
         av_interleaved_write_frame(out_format_ctx, &pkt);
         av_packet_unref(&pkt);
