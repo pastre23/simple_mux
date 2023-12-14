@@ -80,9 +80,6 @@ int main(int argc, char *argv[]) {
         pkt.dts = next_pts;
         next_pts += frame_duration; // Incrementa il PTS per il prossimo frame
 
-        // Riscalare i timestamp se necessario
-        av_packet_rescale_ts(&pkt, in_stream->time_base, out_stream->time_base);
-
         av_interleaved_write_frame(out_format_ctx, &pkt);
         av_packet_unref(&pkt);
     }
