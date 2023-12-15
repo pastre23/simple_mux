@@ -2,7 +2,8 @@
 
 #include <libavformat/avformat.h>
 
-int main(int argc, char *argv[]) {
+int main(int argc, char *argv[]) 
+{
     AVFormatContext *in_format_ctx = NULL, *out_format_ctx = NULL;
     AVPacket pkt;
     int ret, stream_index;
@@ -19,7 +20,8 @@ int main(int argc, char *argv[]) {
     avformat_find_stream_info(in_format_ctx, NULL);
 
     avformat_alloc_output_context2(&out_format_ctx, NULL, NULL, argv[2]);
-    if (!out_format_ctx) {
+    if (!out_format_ctx) 
+    {
         printf("Could not create output context\n");
         return -1;
     }
@@ -27,7 +29,8 @@ int main(int argc, char *argv[]) {
     stream_mapping_size = in_format_ctx->nb_streams;
     stream_mapping = av_mallocz(stream_mapping_size * sizeof(*stream_mapping));
 
-    for (int i = 0; i < in_format_ctx->nb_streams; i++) {
+    for (int i = 0; i < in_format_ctx->nb_streams; i++) 
+    {
         AVStream *out_stream;
         AVStream *in_stream = in_format_ctx->streams[i];
         AVCodecParameters *in_codecpar = in_stream->codecpar;
@@ -67,7 +70,8 @@ int main(int argc, char *argv[]) {
             break;
 
         in_stream = in_format_ctx->streams[pkt.stream_index];
-        if (pkt.stream_index >= stream_mapping_size || stream_mapping[pkt.stream_index] < 0) {
+        if (pkt.stream_index >= stream_mapping_size || stream_mapping[pkt.stream_index] < 0) 
+        {
             av_packet_unref(&pkt);
             continue;
         }

@@ -2,3 +2,4 @@ simple_mux
 *.mp4
 *.h264
 *.h265
+*.hevc
