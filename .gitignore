@@ -3,3 +3,4 @@ simple_mux
 *.h264
 *.h265
 *.hevc
+.vscode/
