@@ -1,14 +1,16 @@
+#define BASETIME 90000
+
 // Define the frame rate of the video
 #define VIDEO_FPS 30
 
 /** Default audio sample rate. */
-#define AUDIO_SAMPLE_RATE 48000
+#define AUDIO_SAMPLE_RATE 44100
 
 /** Size of the audio buffer. */
 #define AUDIO_BUFFER_SIZE 2048
 
 /** Number of audio samples in the buffer. */
-#define AUDIO_SAMPLES 1024
+#define AUDIO_SAMPLES 500
 
 #include <libavformat/avformat.h>
 #include <libavcodec/avcodec.h>
@@ -37,7 +39,7 @@ int main(int argc, char *argv[])
     // Open the H26x video file and initialize the format context for it
     if(avformat_open_input(&video_format_ctx, argv[1], NULL, NULL))
     {
-        fprintf(stderr, "Could not open the audio file\n");
+        fprintf(stderr, "Could not open the video file\n");
         return -1;
     }
 
@@ -57,7 +59,7 @@ int main(int argc, char *argv[])
     }
 
     // Configurazione dello Stream Video (H.265/HEVC)
-    const AVCodec *video_codec = avcodec_find_encoder_by_name("libx265");
+    const AVCodec *video_codec = avcodec_find_encoder_by_name("libx264");
     if (!video_codec) {
         fprintf(stderr, "H.265 codec not found\n");
         return -1;
@@ -91,9 +93,10 @@ int main(int argc, char *argv[])
 
     audio_stream->codecpar->codec_id = audio_codec->id;
     audio_stream->codecpar->codec_type = AVMEDIA_TYPE_AUDIO;
-    audio_stream->codecpar->sample_rate = 48000; // Set your audio sample rate
+    audio_stream->codecpar->sample_rate = AUDIO_SAMPLE_RATE; // Set your audio sample rate
     audio_stream->codecpar->format = AV_SAMPLE_FMT_FLTP; // Common format for AAC
-    audio_stream->codecpar->frame_size = AUDIO_SAMPLES; 
+    audio_stream->codecpar->frame_size = 1024; 
+    audio_stream->codecpar->bit_rate = 300000; 
     // audio_stream->time_base = (AVRational){1, audio_stream->codecpar->sample_rate};
 
 
@@ -109,56 +112,69 @@ int main(int argc, char *argv[])
     }
     
     // Assume a framerate of 30 fps for simplicity, so the duration of a frame is 1/30th of a second
-    int64_t video_frame_duration = 90000/VIDEO_FPS;
-    int64_t audio_frame_duration = AUDIO_SAMPLES*90000/AUDIO_SAMPLE_RATE;
+    int64_t video_frame_duration = BASETIME/VIDEO_FPS;
+    int64_t audio_frame_duration = AUDIO_SAMPLES*BASETIME/AUDIO_SAMPLE_RATE;
     int64_t video_next_pts = 0;
     int64_t audio_next_pts = 0;
 
     // Main loop for reading frames from the input and writing to the output
-    while (1) 
+    int audio_ended=0;
+    int video_ended=0;
+    while (!(audio_ended==1 && video_ended==1)) 
     {
-
         // Read a frame from the input file
+        if(!video_ended)
         {
             ret = av_read_frame(video_format_ctx, &pkt);
             if (ret < 0)
-                break;
+            {
+                video_ended=1;
+                printf("video ended\n");
+            }
+            else
+            {
+                // Update the stream index in the packet to the mapped index
+                pkt.stream_index = 0;
 
-            // Update the stream index in the packet to the mapped index
-            pkt.stream_index = 0;
+                // Set timestamps for the packet
+                pkt.pts = video_next_pts;
+                pkt.dts = pkt.pts;
+                // Increment the PTS for the next frame
+                video_next_pts += video_frame_duration;
 
-            // Set timestamps for the packet
-            pkt.pts = video_next_pts;
-            pkt.dts = video_next_pts;
-            // Increment the PTS for the next frame
-            video_next_pts += video_frame_duration;
-
-            // Write the frame to the output file
-            av_interleaved_write_frame(out_format_ctx, &pkt);
-            // Unreference the packet
-            av_packet_unref(&pkt);
+                // Write the frame to the output file
+                av_interleaved_write_frame(out_format_ctx, &pkt);
+                // Unreference the packet
+                av_packet_unref(&pkt);
+            }
         }
 
         // Read a frame from the audio file
+        if(!audio_ended)
         {
             ret = av_read_frame(audio_format_ctx, &pkt);
             if (ret < 0)
-                break;
+            {
+                audio_ended=1;
+                printf("audio ended\n");
+            }
+            else
+            {
+                // Assume the audio stream is the first stream
+                pkt.stream_index = 1;
 
-            // Assume the audio stream is the first stream
-            pkt.stream_index = 1;
+                // Set PTS for the audio
+                pkt.pts = audio_next_pts;
+                pkt.dts = pkt.pts;
+                // Calculate the next PTS for audio based on the duration of an audio frame
+                // (This will depend on the format and specific parameters of your audio file)
+                audio_next_pts += audio_frame_duration;
 
-            // Set PTS for the audio
-            pkt.pts = audio_next_pts;
-            pkt.dts = audio_next_pts;
-            // Calculate the next PTS for audio based on the duration of an audio frame
-            // (This will depend on the format and specific parameters of your audio file)
-            audio_next_pts += audio_frame_duration;
+                // Write the audio frame to the output file
+                av_interleaved_write_frame(out_format_ctx, &pkt);
 
-            // Write the audio frame to the output file
-            av_interleaved_write_frame(out_format_ctx, &pkt);
-
-            av_packet_unref(&pkt);
+                av_packet_unref(&pkt);
+            }
         }
 
     }
