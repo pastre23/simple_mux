@@ -68,7 +68,11 @@ int main(int argc, char *argv[])
     }
 
     // Allocate memory for stream mapping array based on the number of streams in the input file
-    stream_mapping_size = video_format_ctx->nb_streams;
+    stream_mapping_size = video_format_ctx->nb_streams + audio_format_ctx->nb_streams;
+
+    printf("video stream_mappings: %d\n", video_format_ctx->nb_streams);
+    printf("audio stream_mappings: %d\n", audio_format_ctx->nb_streams);
+
     stream_mapping = av_mallocz(stream_mapping_size * sizeof(*stream_mapping));
 
     // Loop through each stream in the input file
@@ -97,22 +101,37 @@ int main(int argc, char *argv[])
     }
 
     // Audio stream analysis
-    // {
-    //     // Assuming the first stream in the AAC file is audio
-    //     AVStream *audio_stream = audio_format_ctx->streams[0];
+    // Loop through each stream in the input file
+    for (int i = 0; i < audio_format_ctx->nb_streams; i++) 
+    {
+        AVStream *out_audio_stream;
+        AVStream *in_audio_stream = audio_format_ctx->streams[i];
+        AVCodecParameters *audio_codecpar = in_audio_stream->codecpar;
 
-    //     // Add an audio stream to the output
-    //     AVStream *out_audio_stream = avformat_new_stream(out_format_ctx, NULL);
-    //     if (!out_audio_stream) 
-    //     {
-    //         fprintf(stderr, "Failed to create an output audio stream\n");
-    //         return -1;
-    //     }
-    //     // Copy codec parameters from the audio stream to the output audio stream
-    //     avcodec_parameters_copy(out_audio_stream->codecpar, audio_stream->codecpar);
-    //     // Ensure codec tag is set to 0 for the output stream
-    //     out_audio_stream->codecpar->codec_tag = 0;
-    // }
+        // Filter out streams that are not audio, video, or subtitles
+        if (audio_codecpar->codec_type != AVMEDIA_TYPE_AUDIO &&
+            audio_codecpar->codec_type != AVMEDIA_TYPE_VIDEO &&
+            audio_codecpar->codec_type != AVMEDIA_TYPE_SUBTITLE) 
+        {
+            stream_mapping[i] = -1;
+            continue;
+        }
+
+        // Map the stream index from input to output
+        stream_mapping[i] = stream_index++;
+
+        // Add an audio stream to the output
+        out_audio_stream = avformat_new_stream(out_format_ctx, NULL);
+        if (!out_audio_stream) 
+        {
+            fprintf(stderr, "Failed to create an output audio stream\n");
+            return -1;
+        }
+        // Copy codec parameters from the audio stream to the output audio stream
+        avcodec_parameters_copy(out_audio_stream->codecpar, in_audio_stream->codecpar);
+        // Ensure codec tag is set to 0 for the output stream
+        out_audio_stream->codecpar->codec_tag = 0;
+    }
 
     // Open the output file for writing
     avio_open(&out_format_ctx->pb, argv[3], AVIO_FLAG_WRITE);
@@ -136,25 +155,15 @@ int main(int argc, char *argv[])
     // Main loop for reading frames from the input and writing to the output
     while (1) 
     {
+
         // Read a frame from the input file
-        ret = av_read_frame(video_format_ctx, &pkt);
-        if (ret < 0)
-            break;
-
-        // Get the corresponding input stream
-        video_stream = video_format_ctx->streams[pkt.stream_index];
-        // Check if the stream is mapped, if not, unreference the packet and continue
-        if (pkt.stream_index >= stream_mapping_size || stream_mapping[pkt.stream_index] < 0) 
         {
-            av_packet_unref(&pkt);
-            continue;
-        }
+            ret = av_read_frame(video_format_ctx, &pkt);
+            if (ret < 0)
+                break;
 
-        {
             // Update the stream index in the packet to the mapped index
-            pkt.stream_index = stream_mapping[pkt.stream_index];
-            // Get the corresponding output stream
-            out_stream = out_format_ctx->streams[pkt.stream_index];
+            pkt.stream_index = 0;
 
             // Set timestamps for the packet
             pkt.pts = video_next_pts;
@@ -168,27 +177,27 @@ int main(int argc, char *argv[])
             av_packet_unref(&pkt);
         }
 
-        // // Read a frame from the audio file
-        // {
-        //     ret = av_read_frame(audio_format_ctx, &pkt);
-        //     if (ret < 0)
-        //         break;
+        // Read a frame from the audio file
+        {
+            ret = av_read_frame(audio_format_ctx, &pkt);
+            if (ret < 0)
+                break;
 
-        //     // Assume the audio stream is the first stream
-        //     pkt.stream_index = 0;
+            // Assume the audio stream is the first stream
+            pkt.stream_index = 1;
 
-        //     // Set PTS for the audio
-        //     pkt.pts = audio_next_pts;
-        //     pkt.dts = audio_next_pts;
-        //     // Calculate the next PTS for audio based on the duration of an audio frame
-        //     // (This will depend on the format and specific parameters of your audio file)
-        //     audio_next_pts += audio_frame_duration;
+            // Set PTS for the audio
+            pkt.pts = audio_next_pts;
+            pkt.dts = audio_next_pts;
+            // Calculate the next PTS for audio based on the duration of an audio frame
+            // (This will depend on the format and specific parameters of your audio file)
+            audio_next_pts += audio_frame_duration;
 
-        //     // Write the audio frame to the output file
-        //     av_interleaved_write_frame(out_format_ctx, &pkt);
+            // Write the audio frame to the output file
+            av_interleaved_write_frame(out_format_ctx, &pkt);
 
-        //     av_packet_unref(&pkt);
-        // }
+            av_packet_unref(&pkt);
+        }
 
 
 
